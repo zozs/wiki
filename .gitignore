@@ -3,3 +3,8 @@ venv
 *.pyc
 *.sublime-*
 content/
+bin/
+include/
+lib/
+*.swp
+pip-selfcheck.json

@@ -4,15 +4,16 @@ import os
 import re
 import markdown
 import json
+import sh
 from functools import wraps
 from flask import (Flask, render_template, flash, redirect, url_for, request,
                    abort)
-from flask.ext.wtf import Form
+from flask_wtf import Form
 from wtforms import (BooleanField, TextField, TextAreaField, PasswordField)
 from wtforms.validators import (InputRequired, ValidationError)
-from flask.ext.login import (LoginManager, login_required, current_user,
+from flask_login import (LoginManager, login_required, current_user,
                              login_user, logout_user)
-from flask.ext.script import Manager
+from flask_script import Manager
 
 
 """
@@ -23,6 +24,7 @@ from flask.ext.script import Manager
 app = Flask(__name__)
 app.config['CONTENT_DIR'] = 'content'
 app.config['TITLE'] = 'wiki'
+app.config['GIT_EXECUTABLE'] = 'git'
 try:
     app.config.from_pyfile(
         os.path.join(app.config.get('CONTENT_DIR'), 'config.py')
@@ -37,6 +39,7 @@ loginmanager = LoginManager()
 loginmanager.init_app(app)
 loginmanager.login_view = 'user_login'
 
+git = sh.Command(app.config.get('GIT_EXECUTABLE')).bake(_cwd=app.config.get('CONTENT_DIR'))
 
 
 """
@@ -163,6 +166,9 @@ class Page(object):
                 f.write(line.encode('utf-8'))
             f.write('\n'.encode('utf-8'))
             f.write(self.body.replace('\r\n', '\n').encode('utf-8'))
+        # Commit changes to git.
+        git.add(self.path)
+        git.commit('--quiet', m='Modified {}'.format(self.path))
         if update:
             self.load()
             self.render()
@@ -259,7 +265,9 @@ class Wiki(object):
         folder = os.path.dirname(target)
         if not os.path.exists(folder):
             os.makedirs(folder)
-        os.rename(source, target)
+        #os.rename(source, target)
+        git.mv(source, target)
+        git.commit('--quiet', m='Renamed {} to {}'.format(source, target))
 
     def delete(self, url):
         path = self.path(url)
@@ -267,6 +275,8 @@ class Wiki(object):
             return False
         print path
         os.remove(path)
+        git.rm(path)
+        git.commit('--quiet', m='Deleted {}'.format(path))
         return True
 
     def index(self, attr=None):
